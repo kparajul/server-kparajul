@@ -35,7 +35,7 @@ func main() {
 
 	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 
-	port := ":47000"
+	port := ":8080"
 
 	http.ListenAndServe(port, router)
 
