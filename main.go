@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -134,6 +135,14 @@ func searchHandler(writer http.ResponseWriter, req *http.Request) {
 	parameters := req.URL.Query()
 	id := parameters.Get("id")
 	score := parameters.Get("score")
+	if !isvalidID(id) {
+		http.Error(writer, "Invalid ID format", http.StatusBadRequest)
+		return
+	}
+	if !isvalidScore(score) {
+		http.Error(writer, "Invalid score format", http.StatusBadRequest)
+		return
+	}
 
 	var filterExpression string
 	expressionAttribute := make(map[string]*dynamodb.AttributeValue)
@@ -191,6 +200,14 @@ func searchHandler(writer http.ResponseWriter, req *http.Request) {
 	}
 	logFunc(req, http.StatusOK)
 
+}
+
+func isvalidID(id string) bool {
+	return len(id) == 7 && regexp.MustCompile(`^[a-zA-Z0-9-_]+$`).MatchString(id)
+}
+func isvalidScore(score string) bool {
+	_, err := strconv.ParseInt(score, 10, 64)
+	return err == nil
 }
 
 func logFunc(req *http.Request, statusCode int) {
