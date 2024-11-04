@@ -48,7 +48,7 @@ func main() {
 
 	router.HandleFunc("/kparajul/status", statusHandler).Methods(http.MethodGet)
 	router.HandleFunc("/kparajul/all", allHandler).Methods(http.MethodGet)
-	//router.HandleFunc("/kparajul/search", searchHandler).Methods(http.MethodGet)
+	router.HandleFunc("/kparajul/search", searchHandler).Methods(http.MethodGet)
 
 	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 
@@ -62,14 +62,13 @@ func notFoundHandler(writer http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(writer, fmt.Sprintf("Method not allowed: %d", http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		logFunc(req, http.StatusMethodNotAllowed)
-	} else if req.URL.Path != "/kparajul/status" {
+	} else if req.URL.Path != "/kparajul/status" && req.URL.Path != "/kparajul/all" && req.URL.Path != "/kparajul/search" {
 		http.Error(writer, fmt.Sprintf("Not Found: %d", http.StatusNotFound), http.StatusNotFound)
 		logFunc(req, http.StatusNotFound)
 	} else {
 		http.Error(writer, fmt.Sprintf("Not Found: %d", http.StatusNotFound), http.StatusNotFound)
 		logFunc(req, http.StatusNotFound)
 	}
-
 }
 
 func statusHandler(writer http.ResponseWriter, req *http.Request) {
@@ -115,6 +114,69 @@ func allHandler(writer http.ResponseWriter, req *http.Request) {
 		}
 		if score, ok := item["score"]; ok && score.N != nil {
 			comment.Score, _ = strconv.ParseInt(*score.N, 10, 64)
+		}
+		comments = append(comments, comment)
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(writer).Encode(comments)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		logFunc(req, http.StatusInternalServerError)
+		return
+	}
+	logFunc(req, http.StatusOK)
+
+}
+
+func searchHandler(writer http.ResponseWriter, req *http.Request) {
+	parameters := req.URL.Query()
+	id := parameters.Get("id")
+	score := parameters.Get("score")
+
+	var filterExpression string
+	expressionAttribute := make(map[string]*dynamodb.AttributeValue)
+
+	if id != "" && score == "" {
+		filterExpression = "id = :id"
+		expressionAttribute[":id"] = &dynamodb.AttributeValue{S: aws.String(id)}
+	} else if score != "" && id == "" {
+		filterExpression = "score = :score"
+		expressionAttribute[":score"] = &dynamodb.AttributeValue{N: aws.String(score)}
+	} else if id != "" && score != "" {
+		filterExpression = "id = :id AND score = :score"
+		expressionAttribute[":id"] = &dynamodb.AttributeValue{S: aws.String(id)}
+		expressionAttribute[":score"] = &dynamodb.AttributeValue{N: aws.String(score)}
+	} else {
+		http.Error(writer, "Please provide id or score", http.StatusBadRequest)
+		return
+	}
+
+	result, er := db.Scan(&dynamodb.ScanInput{
+		TableName:                 aws.String("kparajul_Reddit_Comments"),
+		FilterExpression:          aws.String(filterExpression),
+		ExpressionAttributeValues: expressionAttribute,
+		ProjectionExpression:      aws.String("id, author, body, score")})
+	if er != nil {
+		client.EchoSend("error scanning database", er.Error())
+		logFunc(req, http.StatusInternalServerError)
+	}
+	var comments []Comment
+	for _, item := range result.Items {
+		var comment Comment
+
+		if idx, ok := item["id"]; ok && idx.S != nil {
+			comment.ID = *idx.S
+		}
+		if author, ok := item["author"]; ok && author.S != nil {
+			comment.Author = *author.S
+		}
+		if body, ok := item["body"]; ok && body.S != nil {
+			comment.Body = *body.S
+		}
+		if scorex, ok := item["score"]; ok && scorex.N != nil {
+			comment.Score, _ = strconv.ParseInt(*scorex.N, 10, 64)
 		}
 		comments = append(comments, comment)
 	}
