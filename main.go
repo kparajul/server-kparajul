@@ -6,8 +6,10 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/gorilla/mux"
 	"github.com/jamespearly/loggly"
 	"github.com/joho/godotenv"
@@ -19,6 +21,7 @@ type Response struct {
 }
 
 var client *loggly.ClientType
+var db *dynamodb.DynamoDB
 
 func main() {
 	err := godotenv.Load()
@@ -28,6 +31,15 @@ func main() {
 
 	logglyToken := os.Getenv("LOGGLY_TOKEN")
 	client = loggly.New(logglyToken)
+
+	session, err := session.NewSession(&aws.Config{
+		Region: aws.String(os.Getenv("AWS_REGION")),
+	})
+	if err != nil {
+		log.Fatal("Couldn't create an AWS session", err)
+	}
+
+	db = dynamodb.New(session)
 
 	router := mux.NewRouter()
 
@@ -56,14 +68,15 @@ func notFoundHandler(writer http.ResponseWriter, req *http.Request) {
 }
 
 func statusHandler(writer http.ResponseWriter, req *http.Request) {
-	location, er := time.LoadLocation("UTC")
+	result, er := db.Scan(&dynamodb.ScanInput{TableName: aws.String("kparajul_Reddit_Comments")})
 	if er != nil {
-		client.EchoSend("error", er.Error())
+		client.EchoSend("error scanning database", er.Error())
+		logFunc(req, http.StatusInternalServerError)
 	}
-	response := Response{Time: time.Now().In(location).Format(time.RFC1123Z), StatusC: http.StatusOK}
+	itemCount := int(*result.Count)
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(writer).Encode(response)
+	err := json.NewEncoder(writer).Encode(itemCount)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		logFunc(req, http.StatusInternalServerError)
