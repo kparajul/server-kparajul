@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -15,9 +16,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Response struct {
-	Time    string `json:"time"`
-	StatusC int    `json:"status_code"`
+type Comment struct {
+	ID     string `json:"id"`
+	Author string `json:"author"`
+	Body   string `json:"body"`
+	Score  int64  `json:"score"`
 }
 
 var client *loggly.ClientType
@@ -44,6 +47,8 @@ func main() {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/kparajul/status", statusHandler).Methods(http.MethodGet)
+	router.HandleFunc("/kparajul/all", allHandler).Methods(http.MethodGet)
+	//router.HandleFunc("/kparajul/search", searchHandler).Methods(http.MethodGet)
 
 	router.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 
@@ -68,15 +73,55 @@ func notFoundHandler(writer http.ResponseWriter, req *http.Request) {
 }
 
 func statusHandler(writer http.ResponseWriter, req *http.Request) {
-	result, er := db.Scan(&dynamodb.ScanInput{TableName: aws.String("kparajul_Reddit_Comments")})
+	result, er := db.DescribeTable(&dynamodb.DescribeTableInput{TableName: aws.String("kparajul_Reddit_Comments")})
 	if er != nil {
 		client.EchoSend("error scanning database", er.Error())
 		logFunc(req, http.StatusInternalServerError)
 	}
-	itemCount := int(*result.Count)
+	itemCount := int(*result.Table.ItemCount)
+
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
 	err := json.NewEncoder(writer).Encode(itemCount)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		logFunc(req, http.StatusInternalServerError)
+		return
+	}
+	logFunc(req, http.StatusOK)
+
+}
+
+func allHandler(writer http.ResponseWriter, req *http.Request) {
+	result, er := db.Scan(&dynamodb.ScanInput{TableName: aws.String("kparajul_Reddit_Comments"), ProjectionExpression: aws.String("id, author, body, score")})
+	if er != nil {
+		client.EchoSend("error scanning database", er.Error())
+		logFunc(req, http.StatusInternalServerError)
+	}
+
+	//this syntax is difficult, I took help from chatGPT to figure out syntax to parse content
+	var comments []Comment
+	for _, item := range result.Items {
+		var comment Comment
+
+		if id, ok := item["id"]; ok && id.S != nil {
+			comment.ID = *id.S
+		}
+		if author, ok := item["author"]; ok && author.S != nil {
+			comment.Author = *author.S
+		}
+		if body, ok := item["body"]; ok && body.S != nil {
+			comment.Body = *body.S
+		}
+		if score, ok := item["score"]; ok && score.N != nil {
+			comment.Score, _ = strconv.ParseInt(*score.N, 10, 64)
+		}
+		comments = append(comments, comment)
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(writer).Encode(comments)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		logFunc(req, http.StatusInternalServerError)
