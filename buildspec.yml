@@ -6,14 +6,14 @@ phases:
       - echo Logging in to Amazon ECR...
       - aws --version
       - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 817615305328.dkr.ecr.us-east-1.amazonaws.com
-      - REPOSITORY_URI=817615305328.dkr.ecr.us-east-1.amazonaws.com/kparajul-server:latest
+      - REPOSITORY_URI=817615305328.dkr.ecr.us-east-1.amazonaws.com/kparajul-server
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
-      - docker build -t $REPOSITORY_URI -f Dockerfile.multistage .
+      - docker build -t $REPOSITORY_URI:latest -f Dockerfile.multistage .
       - docker tag $REPOSITORY_URI $REPOSITORY_URI:$IMAGE_TAG
   post_build:
     commands:
