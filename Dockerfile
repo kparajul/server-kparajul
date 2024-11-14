@@ -32,5 +32,3 @@ RUN env && pwd && find .
 
 # Start the application
 CMD ["./main"]
-
-
