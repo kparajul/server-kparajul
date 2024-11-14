@@ -24,9 +24,6 @@ WORKDIR /root/
 # Copy files from previous build container
 COPY --from=build /go/src/my-golang-source-code/main ./
 
-# Copy the .env file into the image
-COPY .env /root/.env
-
 # Check results
 RUN env && pwd && find .
 
