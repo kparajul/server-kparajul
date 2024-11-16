@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/gorilla/mux"
 	"github.com/jamespearly/loggly"
-	"github.com/joho/godotenv"
 )
 
 type Comment struct {
@@ -28,11 +27,6 @@ var client *loggly.ClientType
 var db *dynamodb.DynamoDB
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
 	logglyToken := os.Getenv("LOGGLY_TOKEN")
 	client = loggly.New(logglyToken)
 
